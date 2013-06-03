@@ -1,0 +1,17 @@
+%% -*- erlang -*-
+{application, mps,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  riak_core,
+		  ranch,
+		  cowboy
+%		  mimetypes
+                 ]},
+  {mod, { mps_app, []}},
+  {env, []}
+ ]}.

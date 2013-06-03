@@ -1,0 +1,121 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+    <title>Topic Publishing Client</title>
+    <script src="/static/jquery.min.js"></script>
+    <script type="text/javascript">
+      
+      var websocket;
+      $(document).ready(init);
+      
+      function init() {
+          if(!("WebSocket" in window)){  
+              $('#status').append('<p><span style="color: red;">websockets are not supported </span></p>');
+              $("#navigation").hide();  
+          } else {
+              $('#status').append('<p><span style="color: green;">websockets are supported </span></p>');
+              connect();
+          };
+              $("#connected").hide(); 	
+              $("#content").hide(); 	
+      };
+
+      function connect()
+      {
+          wsHost = $("#server").val()
+          websocket = new WebSocket(wsHost);
+          showScreen('<b>Connecting to: ' +  wsHost + '</b>'); 
+          websocket.onopen = function(evt) { onOpen(evt) }; 
+          websocket.onclose = function(evt) { onClose(evt) }; 
+          websocket.onmessage = function(evt) { onMessage(evt) }; 
+          websocket.onerror = function(evt) { onError(evt) }; 
+      };  
+      
+      function disconnect() {
+          websocket.close();
+      }; 
+
+      function toggle_connection(){
+          if(websocket.readyState == websocket.OPEN){
+              disconnect();
+          } else {
+              connect();
+          };
+      };
+
+      function sendTxt() {
+          if(websocket.readyState == websocket.OPEN){
+              txt = $("#value").val();
+              websocket.send(txt);
+              showScreen('sending: ' + txt); 
+          } else {
+               showScreen('websocket is not connected'); 
+          };
+      };
+
+      function onOpen(evt) { 
+          showScreen('<span style="color: green;">CONNECTED </span>'); 
+          $("#connected").fadeIn('slow');
+          $("#content").fadeIn('slow');
+      };  
+
+      function onClose(evt) { 
+          showScreen('<span style="color: red;">DISCONNECTED </span>');
+      };  
+
+      function onMessage(evt) { 
+          showScreen('<span style="color: blue;">RESPONSE: ' + evt.data+ '</span>'); 
+      };  
+
+      function showScreen(txt) { 
+          $('#output').prepend('<p>' + txt + '</p>');
+      };
+
+      function clearScreen() 
+      { 
+          $('#output').html("");
+      };
+    </script>
+
+  </head>
+
+  <body>
+    <div id="header">
+      <h1>Topic Publishing client</h1>
+      <div id="status"></div>
+    </div>
+
+    <div id="navigation">
+
+      <p id="connecting">
+	<input type='text' id="server" value="ws://localhost:8080/websocket"></input>
+	<button type="button" onclick="toggle_connection()">Disconnect</button>
+      </p>
+      <div id="connected">				
+
+	<table border="1">
+	  <tr>
+	    <th>Topic</th>
+	    <th>Key</th>
+	    <th>Value</th>
+	    <th>Action</th>
+	  </tr>
+	  
+	  <tr>
+
+	    <td><input type='text' id="topic" value="Topic1"></input></td>
+	    <td><input type='text' id="key" value="Key1"></input></td>
+	    <td><input type='text' id="value" value=></input></td>
+	    <td><button type="button" onclick="sendTxt();">Publish</button></td>
+
+	  </tr>
+	</table>
+	<p>
+
+	</p>
+      </div>
+
+
+    </div>
+  </body>
+</html> 
