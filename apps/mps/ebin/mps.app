@@ -5,8 +5,8 @@
               {applications,[kernel,stdlib,riak_core,ranch,cowboy]},
               {mod,{mps_app,[]}},
               {env,[]},
-              {modules,[mps,mps_app,mps_console,mps_eventhandler_subscription,
-                        mps_node_event_handler,mps_pubsub,
-                        mps_ring_event_handler,mps_sup,mps_vnode,
-                        pubpage_handler,toppage_handler,websocket,
+              {modules,[mps,mps_app,mps_console,mps_event_handler_simple,
+                        mps_eventhandler_subscription,mps_node_event_handler,
+                        mps_pubsub,mps_ring_event_handler,mps_sup,mps_utils,
+                        mps_vnode,pubpage_handler,toppage_handler,websocket,
                         websocket_app,websocket_sup,ws_handler]}]}.

@@ -79,6 +79,19 @@ Currently riak_core depends on webmachine which depends on mochiweb. We are usin
 THe version of mochiweb that deals with webmachine is not compatible with R16B. One must update to a later
 version of mochiweb. 
 
+You must have a sane make and rebar. 
+
+Steps : 
+    1. git clone https://github.com/milindparikh/mps
+    2. make rel 
+          will give you some warnings and errors 
+          To remove the errors, go to rebar.config of webmachine (under deps/webmachine)
+             2.a change mochiweb tag from "1.5.1p3" to ""1.5.1p5"
+             2.b remove the mochiweb directory under deps
+	     2.c rerun make rel
+
+                  
+
 Also for the sample example of the demo, we use cowboy as the webserver ; primarily for the websocket level. 
 cowboy does not play nicely with the riak_core template for content serving (or at least it demonstrates 
 our ignorance in working with cowboy). THere are some steps that must be taken after the rel is built on a 
