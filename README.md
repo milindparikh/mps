@@ -89,16 +89,27 @@ Steps :
              2.a change mochiweb tag from "1.5.1p3" to ""1.5.1p5"
              2.b remove the mochiweb directory under deps
 	     2.c rerun make rel
-
-                  
+                        It will now get the correct version of the mochiweb
+             2.d ./rel/mps/bin/mps console will start the entire node
+                  BUT YOU ARE NOT DONE YET... SEE BELOW
 
 Also for the sample example of the demo, we use cowboy as the webserver ; primarily for the websocket level. 
 cowboy does not play nicely with the riak_core template for content serving (or at least it demonstrates 
 our ignorance in working with cowboy). THere are some steps that must be taken after the rel is built on a 
 manual basis.
 
+            2.e Copy the priv directory under apps/mps/src to two places 
+                       rel/mps 
+		       rel/mps/lib/mps-1        -> you will need to mkdir mps-1 under lib first 
 
+            2.f Under console, you are now in erlang world 
+	    	  do a mps_pubsub:create_topics().
+		  
 
+            2.g 
+                localhost:8080              gets you the Topic Subscription Client
+		localhost:8080/publish      gets you the Topic Publishing Client 
+           
 
 
 
