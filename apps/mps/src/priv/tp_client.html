@@ -45,7 +45,7 @@
 
       function sendTxt() {
           if(websocket.readyState == websocket.OPEN){
-              txt = $("#value").val();
+              txt = "publish{" +  $("#topic").val() + "," + $("#key").val() + "," +  $("#value").val() + "}";
               websocket.send(txt);
               showScreen('sending: ' + txt); 
           } else {

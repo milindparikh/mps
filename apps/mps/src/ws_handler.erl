@@ -18,7 +18,10 @@
 -export([websocket_info/3]).
 -export([websocket_terminate/3]).
 -export([mps_subscription_fun/4]).
+-record(state, {prev_subscription}).
 
+empty_state() ->
+    #state{}.
 
 mps_subscription_fun (Instance, Topic, Key, Msg) ->
     Instance ! {timeout, Instance, {Topic, Key, Msg}}.    %% THIS SHOULD BE CHANGED TO ACCOMODATE REDUNDANCY
@@ -33,15 +36,37 @@ websocket_init(_TransportName, Req, _Opts) ->
 %%          Actually should be handled at the websocket_handle level
 
     mps_pubsub:subscribe("Topic1", "Key1", self(), fun ?MODULE:mps_subscription_fun/4),
-    {ok, Req, undefined_state}.
+    {ok, Req, empty_state()}.
 
 
 %% This is where the subscribe  from browser occurs 
 %% Be careful about code injection at this level 
 %% 
 websocket_handle({text, Msg}, Req, State) ->
-    mps_pubsub:publish("Topic1", "Key1", Msg),
-    {ok, Req, State};
+    {ok, Rp} = re:compile("publish{(.*)\,\s*(.*)\,\s*(.*)}"),
+    {ok, Rs} = re:compile("subscribe{(.*)\,\s*(.*)}"),
+
+    case re:run(Msg, Rp) of 
+	{match, [{_,_}, {Ts, Te}, {Ks, Ke}, {Vs, Ve}]} ->
+	    mps_pubsub:publish(lists:sublist(Msg, Ts, Te), lists:sublist(Msg, Ks, Ke), lists:sublist(Msg, Vs, Ve)),
+	    NewState = State;
+	_ -> 
+	    case re:run(Msg, Rs) of 
+		{match, [{_,_}, {Ts, Te}, {Ks, Ke}]} -> 
+		    case State#state.prev_subscription of 
+			undefined ->
+			    SubscribedTopics = mps_pubsub:subscribe(lists:sublist(Msg, Ts, Te), lists:sublist(Msg, Ks, Ke), self(), fun ws_handler:mps_subscription/4),
+			    NewState = State#state{prev_subscription = SubscribedTopics};
+			_ -> 
+			    mps_pubsub:unsubscribe(State#state.prev_subscription),
+			    SubscribedTopics = mps_pubsub:subscribe(lists:sublist(Msg, Ts, Te), lists:sublist(Msg, Ks, Ke), self(), fun ws_handler:mps_subscription/4),
+			    NewState = State#state{prev_subscription = SubscribedTopics}
+		    end;
+		nomatch -> 
+		    NewState = State
+	    end
+    end,
+    {ok, Req, NewState};
 
 websocket_handle(_Data, Req, State) ->
 	{ok, Req, State}.
