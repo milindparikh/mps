@@ -12,7 +12,7 @@ the higher level.
 mps talks natively to Kafka; but hides the complexity of dealing with the wire protocol. We chose to 
 expose two main interfaces: publish and subscribe. The archtypical function signature is simple.
 
-pu blish/3 --> publish(Topic, Key, Value)
+publish/3 --> publish(Topic, Key, Value)
 subscribe/4 --> subscribe (Topic, Key, Instance, CallbackFunction)
 
 We provide additional useful variations of both publish and subscribe. 
@@ -24,17 +24,19 @@ Four other features probably deserve mention:
 
 
 1.  KEY FILTERING 
+
+       add_subscription (Subscriber, {"Promotions", "com.*", <InstanceId>, <CB>})
        subscribe("Promotions", "com.*", <InstanceId>, <CB>)
            monitors chatter on the "com.*" key range 
 
-       subscribe("Promotions", "com.(amazon|ebay).sales.*", <InstanceId>, <CB>) and 	  
+       add_subscription (Subscriber, {"Promotions", "com.(amazon|ebay).sales.*", <InstanceId>, <CB>})
+       subscribe("Promotions", "com.(amazon|ebay).sales.*", <InstanceId>, <CB>)
            monitors specific events that occur on 
                            com.amazon.sales.* 
                            com.ebay.sales.* 
                                             key range
 
-                           
-
+       add_subscription (Subscriber, {"Promotions", "com.amazon.sales.orders", <InstanceId>, <CB>})
        subscribe("Promotions", "com.amazon.sales.orders", <InstanceId>, <CB>) 
             monitors even more specific events on 
                             com.amazon.sales.orders
@@ -57,13 +59,34 @@ Four other features probably deserve mention:
 
 3. STREAM and REPLAY 
       
-We chose to expose two main modes of operations: STREAM and REPLAY
+We chose to expose two main modes of operations: STREAM and REPLAY in subscription
+
 
 Streaming is the process through which a client "tags" on the stream in context of data flowing 
-through in Kafka. This is the most efficient usage from a Kafka perspective. 
+through in Kafka. This is the most efficient usage from a Kafka perspective. Streaming is simple.
 
+	stream
+
+       add_subscription (Subscriber, {"Promotions", "com.amazon.sales.orders", <InstanceId>, <CB>}) 
+
+devolves to 
+
+       add_subscription (Subscriber, {"Promotions", "com.amazon.sales.orders", <InstanceId>, <CB>}, stream)
+			
 Replaying is when a client needs to look at the history of that Topic/Key. There is no current merge 
-capabilities when the replay becomes in-sync with the stream. 
+capabilities when the replay becomes in-sync with the stream. The following verbs are supported in mps
+
+	     {replay, from_begining, to_end}       %% the end as it exists at the start of replay
+	     {replay, from_begining, to_infinity}  %% after playing catchup, behaves like stream on own channel
+     
+	     {replay, from_begining, {to_offset, M}}
+	     {replay, {from_offset N}, {to_offset, M}}
+
+Replaying is not free and in some cases, becomes expensive and in rare cases very expensive. The reason is 
+essentially the client is creating his/her own channel without amortizing the cost with several other clients. 
+But essentially, thanks to riak core (below), it really becomes an issue for expense rather than a question of 
+doability. 
+
 
 
 
