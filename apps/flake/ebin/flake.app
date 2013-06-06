@@ -1,0 +1,9 @@
+{application,flake,
+             [{description,"flake"},
+              {vsn,"0.7"},
+              {modules,[flake,flake_app,flake_harness,flake_server,flake_sup,
+                        flake_util,persistent_timer]},
+              {registered,[]},
+              {applications,[kernel,stdlib,crypto]},
+              {mod,{flake_app,[]}},
+              {env,[{allowable_downtime,2592000000}]}]}.
