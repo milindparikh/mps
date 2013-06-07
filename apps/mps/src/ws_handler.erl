@@ -18,12 +18,10 @@
 -export([websocket_info/3]).
 -export([websocket_terminate/3]).
 -export([mps_subscription_fun/4]).
--record(state, {prev_subscription}).
-
-empty_state() ->
-    #state{}.
+-record(state, {subscriber}).
 
 mps_subscription_fun (Instance, Topic, Key, Msg) ->
+    io:format("In ws_handler:mps_subscription_fun  debug ~p ~p ~p~n", [Topic, Key, Msg]),
     Instance ! {timeout, Instance, {Topic, Key, Msg}}.    %% THIS SHOULD BE CHANGED TO ACCOMODATE REDUNDANCY
 
 
@@ -31,37 +29,34 @@ init({tcp, http}, _Req, _Opts) ->
 	{upgrade, protocol, cowboy_websocket}.
 
 websocket_init(_TransportName, Req, _Opts) ->
-%%	erlang:start_timer(1000, self(), <<"Hello!">>),
-%%      The statement below is HARDCODED Topic1
-%%          Actually should be handled at the websocket_handle level
-
-    mps_pubsub:subscribe("Topic1", "Key1", self(), fun ?MODULE:mps_subscription_fun/4),
-    {ok, Req, empty_state()}.
+    NewSubscriber = mps_pubsub:new_subscriber(),
+    {ok, Req, #state{subscriber=NewSubscriber}}.
 
 
 %% This is where the subscribe  from browser occurs 
 %% Be careful about code injection at this level 
 %% 
-websocket_handle({text, Msg}, Req, State) ->
+websocket_handle({text, Msg2}, Req, State) ->
     {ok, Rp} = re:compile("publish{(.*)\,\s*(.*)\,\s*(.*)}"),
     {ok, Rs} = re:compile("subscribe{(.*)\,\s*(.*)}"),
 
+    Msg = binary_to_list(Msg2),
+    
     case re:run(Msg, Rp) of 
 	{match, [{_,_}, {Ts, Te}, {Ks, Ke}, {Vs, Ve}]} ->
-	    mps_pubsub:publish(lists:sublist(Msg, Ts, Te), lists:sublist(Msg, Ks, Ke), lists:sublist(Msg, Vs, Ve)),
+	    io:format("In publish debug ~p ~p ~p~n", [lists:sublist(Msg, Ts+1, Te), lists:sublist(Msg, Ks+1, Ke), lists:sublist(Msg, Vs+1, Ve)]),
+	    mps_pubsub:publish(lists:sublist(Msg, Ts+1, Te), lists:sublist(Msg, Ks+1, Ke), lists:sublist(Msg, Vs+1, Ve)),
 	    NewState = State;
 	_ -> 
 	    case re:run(Msg, Rs) of 
+
 		{match, [{_,_}, {Ts, Te}, {Ks, Ke}]} -> 
-		    case State#state.prev_subscription of 
-			undefined ->
-			    SubscribedTopics = mps_pubsub:subscribe(lists:sublist(Msg, Ts, Te), lists:sublist(Msg, Ks, Ke), self(), fun ws_handler:mps_subscription/4),
-			    NewState = State#state{prev_subscription = SubscribedTopics};
-			_ -> 
-			    mps_pubsub:unsubscribe(State#state.prev_subscription),
-			    SubscribedTopics = mps_pubsub:subscribe(lists:sublist(Msg, Ts, Te), lists:sublist(Msg, Ks, Ke), self(), fun ws_handler:mps_subscription/4),
-			    NewState = State#state{prev_subscription = SubscribedTopics}
-		    end;
+		    io:format("In subscribe debug ~p ~p~n", [lists:sublist(Msg, Ts+1, Te), lists:sublist(Msg, Ks+1, Ke)]),
+		    ChangedSubscriber = mps_pubsub:add_subscription(State#state.subscriber, {lists:sublist(Msg, Ts+1, Te), 
+											     lists:sublist(Msg, Ks+1, Ke), 
+											     self(), 
+											     fun ws_handler:mps_subscription_fun/4}),
+		    NewState = State#state{subscriber = ChangedSubscriber};    
 		nomatch -> 
 		    NewState = State
 	    end
@@ -76,10 +71,11 @@ websocket_handle(_Data, Req, State) ->
 %% so the checks for duplicate messages, if necessary, are done here
 %% and any ack back
 
-websocket_info({timeout, _Ref, {_Topic, _Key, Msg}}, Req, State) ->
-	{reply, {text, Msg}, Req, State};
+websocket_info({timeout, _Ref, {Topic, Key, Msg}}, Req, State) ->
+    io:format("In ws_handler:websocket_info  debug ~p ~p ~p~n", [Topic, Key, Msg]),
+    {reply, {text, Msg}, Req, State};
 websocket_info(_Info, Req, State) ->
-	{ok, Req, State}.
+    {ok, Req, State}.
 
 websocket_terminate(_Reason, _Req, _State) ->
-	ok.
+    ok.
