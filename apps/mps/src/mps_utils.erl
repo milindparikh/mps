@@ -1,8 +1,13 @@
 -module(mps_utils).
+-include("mps.hrl").
 
 -export([generate_keys_for_publish/1]).
 -export([generate_keys_for_subscribe/1]).
 -export([generate_regexpr_for_word/1]).
+-export ([get_hex_topics/3]).
+-export ([hexstring/1]).
+-export([find_vnode_for_hex_topic/1]).
+-export([reg_event_manager/1, lookup_event_manager/1]).
 
 
 generate_regexpr_for_word(Word) ->
@@ -109,4 +114,46 @@ generate_keys (_SplitWords, _StartAt, 0, List ) ->
 
 generate_keys (SplitWords, StartAt, Count, List ) ->
     generate_keys ( SplitWords, StartAt+1, Count-1, [L1++"."++A1 || L1 <- List, A1 <- generate_keys(SplitWords, StartAt, Count)]).
+
+
+
+find_vnode_for_hex_topic (HTopic) ->
+    trunc(list_to_integer(lists:flatten(lists:map(fun (X) -> io_lib:format("~2.16.0b", [X]) end, HTopic)), 16)/?NUMBEROFTOPICS).
+
+
+
+
+get_hex_topics (Topic, Mode, Keys) ->
+    [hextopic(Topic++"-"++Mode++"-"++integer_to_list(N), Mode, K) || N <-lists:seq(0,?REDUDANCY_FOR_SUBSCRIPTION), K <- Keys].
+
+
+    
+hextopic(Topic, Mode, Key) ->    
+    S = crypto:sha(Topic++Key),
+    B = binary_to_list(S),
+    {L1, _L2} = lists:split(?TOPICRANGE, B),
+    "Topic-"++Mode++"-"++hexstring(list_to_binary(L1)).
+
+
+
+    
+hexstring(Binary) when is_binary(Binary) ->
+    lists:flatten(lists:map(
+		    fun(X) -> io_lib:format("~2.16.0b", [X]) end, 
+		    binary_to_list(Binary))).
+
+
+
+
+reg_event_manager(Topic) ->
+    {ok, Pid} = gen_event:start_link(),
+    gproc:reg({n, l, Topic}, Pid).
+
+lookup_event_manager(Topic)  ->
+    case gproc:lookup_local_name(Topic) of 
+	undefined->
+	    undefined;
+	Pid -> 
+	    gproc:get_value({n,l, Topic}, Pid)
+    end.
 

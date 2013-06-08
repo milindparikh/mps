@@ -9,7 +9,7 @@
                   stdlib,
                   riak_core,
 		  ranch,
-		  cowboy, flake
+		  cowboy, flake, gproc
 %		  mimetypes
                  ]},
   {mod, { mps_app, []}},
