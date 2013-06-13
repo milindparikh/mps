@@ -8,6 +8,7 @@
 -export ([hexstring/1]).
 -export([find_vnode_for_hex_topic/1]).
 -export([reg_event_manager/1, lookup_event_manager/1]).
+-export([num_partitions_in_ring/0]).
 
 
 generate_regexpr_for_word(Word) ->
@@ -144,6 +145,10 @@ hexstring(Binary) when is_binary(Binary) ->
 
 
 
+num_partitions_in_ring() ->
+    
+    {ok, State} = riak_core_ring_manager:get_my_ring(),
+    riak_core_ring:num_partitions(State).
 
 reg_event_manager(Topic) ->
     {ok, Pid} = gen_event:start_link(),

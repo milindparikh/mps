@@ -4,12 +4,19 @@
 
 -export([
          ping/0,
+	 create_stream/0,	 create_stream/1,
+	 
 	 create_topics/0,
 	 create_topics/1,
 	 publish/3,
-	 get_pid_for_topic/1
+	 get_pid_for_topic/1, 
+	 publish_to_kafka/3,
+	 subscribe_from_kafka/1,
+	 subscribe_from_kafka/2
+	 
         ]).
 -export ([new_subscriber/0, add_subscription/2, delete_all_subscriptions/1]).
+-export([get_index_node/1]).
 
 %% Public API
 
@@ -22,6 +29,23 @@ ping() ->
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, mps_vnode_master).
 
 
+
+create_stream() ->
+    create_stream("stream").
+
+create_stream(Stream) ->
+    DocIdx = riak_core_util:chash_key({<<"ping">>, term_to_binary(now())}),
+    PrefList = riak_core_apl:get_apl(DocIdx, mps_utils:num_partitions_in_ring(), mps),
+  
+    riak_core_vnode_master:coverage ({create_stream, Stream}, 
+				     PrefList,
+				     all, 
+				     {server, undefined, undefined},
+				     mps_vnode_master).
+
+	
+				     
+    
     
 create_topics() ->
     create_topics(?NUMBEROFTOPICS, atom_to_list(stream)).
@@ -126,6 +150,20 @@ get_pid_for_topic(Topic) ->
 
 
 
+create_topics(0, _Mode) ->
+    ok;
+create_topics(I, Mode) -> 
+    B = <<I:16>>,
+    A = "Topic-"++Mode++"-",
+    create_topic(   A++mps_utils:hexstring(B)),
+    create_topics(I-1, Mode).
+
+
+
+
+
+
+
 create_topic(Topic) ->
     {ok, R} = re:compile(".*-.*-(.*)"),
     case re:run(Topic, R) of 
@@ -139,15 +177,6 @@ create_topic(Topic) ->
 	    ok
     end.
 
-
-
-create_topics(0, _Mode) ->
-    ok;
-create_topics(I, Mode) -> 
-    B = <<I:16>>,
-    A = "Topic-"++Mode++"-",
-    create_topic(   A++mps_utils:hexstring(B)),
-    create_topics(I-1, Mode).
 
 
 get_index_node(HTopic) ->    
@@ -182,4 +211,20 @@ delete_particular_subscription({subscription, _Id, _Mode , _KExpr, _KMExpr, Subs
 
 
 
+publish_to_kafka (Topic, Key, Value) ->
+    Pid = kafka_client:locate_kafka_client(),
+    CorrId = kafka_client:request_produce(Pid, [{Topic, [   {0, [{Key,Value}]    }]}]),
+    timer:sleep(1000),
+    kafka_client:response_produce(Pid, CorrId).
     
+    
+subscribe_from_kafka (Topic) ->
+    subscribe_from_kafka (Topic, stream).
+
+subscribe_from_kafka (Topic, Stream) ->
+    Pid = kafka_subscription:locate_kafka_subscription(),
+    kafka_subscription:add_subscription (Pid, {Topic, Stream, fun mps:publish/4}).
+
+
+
+

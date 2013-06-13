@@ -121,9 +121,12 @@ cowboy does not play nicely with the riak_core template for content serving (or 
 our ignorance in working with cowboy). THere are some steps that must be taken after the rel is built on a 
 manual basis.
 
+		STEP 2.e IS NOW DONE AS A PART OF THE make rel PROCESS
+
             2.e Copy the priv directory under apps/mps/src to two places 
                        rel/mps 
-		       rel/mps/lib/mps-1        -> you will need to mkdir mps-1 under lib first 
+		       rel/mps/lib/mps-1        -> you will need to mkdir mps-1 under lib first
+
 
             2.f Under console, you are now in erlang world 
 	    	  do a mps_pubsub:create_topics().
@@ -137,3 +140,4 @@ manual basis.
 
 
 
+ 

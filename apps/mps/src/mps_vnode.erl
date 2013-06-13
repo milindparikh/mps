@@ -17,7 +17,7 @@
          handle_coverage/4,
          handle_exit/3]).
 
--record(state, {partition, position,start_range_topics, end_range_topics}).
+-record(state, {partition, topartition, position, topics_in_vnode, num_topics}).
 
 %% API
 start_vnode(I) ->
@@ -25,26 +25,31 @@ start_vnode(I) ->
 
 init([Partition]) ->
     
-    NumOfPartitionsInRing = num_partitions_in_ring(),
+    NumOfPartitionsInRing = mps_utils:num_partitions_in_ring(),
     Position = trunc(((Partition/math:pow(2,160)) * NumOfPartitionsInRing)),
+    ToPartition = Partition + trunc(math:pow(2,160)/NumOfPartitionsInRing) - 1,
     
-    StartRangeTopics = trunc( ( ( (?NUMBEROFTOPICS + 1) * Position ) / NumOfPartitionsInRing )),
-    EndRangeTopics = trunc( ( ( (?NUMBEROFTOPICS + 1) * (Position + 1) ) / NumOfPartitionsInRing ) - 1),
-    
-    
-    
-    
+    TopicsInVNode = topics_in_vnode(?NUMBEROFTOPICS, [], Partition, ToPartition),
+    NumTopics = length(TopicsInVNode),
+
     {ok, #state { partition=Partition, 
 		  position=Position ,
-		  start_range_topics = StartRangeTopics,
-		  end_range_topics = EndRangeTopics}
+		  topartition=ToPartition,
+		  topics_in_vnode = TopicsInVNode,
+		  num_topics = NumTopics
+		}
 		  
     }.
 
-%    {ok, #state { partition=Partition }}.
 
 
 
+% get_list_of_topics_for_this_vnode(Partition, ToPartition) ->
+%    get_list_of_topics_for_this_vnode([], 0, ?NUMBEROFTOPICS, Partition, ToPartition).
+%
+% get_list_of_topics_for_this_vnode (ListTopics, _Count, 0, _Partition, _ToPartition) ->
+%    ListTopics;
+% get_list_of_topics_for_this_vnode (ListTopics, Count, Remaining, _Partition, _ToPartition) ->
 
 
 handle_command(
@@ -71,8 +76,7 @@ handle_command(
     {reply, {pid,
 	     State#state.partition, 
 	     State#state.position,
-	     State#state.start_range_topics,
-	     State#state.end_range_topics, Topic
+	     Topic
 	     
 	    }, 
      State};
@@ -85,8 +89,8 @@ handle_command(ping, _Sender, State) ->
     {reply, {pong, 
 	     State#state.partition, 
 	     State#state.position,
-	     State#state.start_range_topics,
-	     State#state.end_range_topics
+	     State#state.topartition,
+	     State#state.num_topics
 
 	    }, 
      State};
@@ -105,9 +109,8 @@ handle_command({publish, Topic, Value}, _Sender, State) ->
     
     {reply, {pid,
 	     State#state.partition, 
-	     State#state.position,
-	     State#state.start_range_topics,
-	     State#state.end_range_topics, Topic
+	     State#state.position
+
 	     
 	    }, 
      State};
@@ -133,10 +136,7 @@ handle_command({delete_subscription,
     
     {reply, {pid,
 	     State#state.partition, 
-	     State#state.position,
-	     State#state.start_range_topics,
-	     State#state.end_range_topics, Topic
-	     
+	     State#state.position
 	    }, 
      State};
 
@@ -146,9 +146,7 @@ handle_command({create_topic, Topic}, _Sender, State) ->
     
     {reply, {pid,
 	     State#state.partition, 
-	     State#state.position,
-	     State#state.start_range_topics,
-	     State#state.end_range_topics, Topic
+	     State#state.position
 	     
 	    }, 
      State};
@@ -196,8 +194,16 @@ is_empty(State) ->
 delete(State) ->
     {ok, State}.
 
-handle_coverage(_Req, _KeySpaces, _Sender, State) ->
-    {stop, not_implemented, State}.
+handle_coverage({create_stream, Stream }, _KeySpaces, _Sender, State) -> 
+    lists:foreach(fun ({E}) ->     
+
+			  mps_utils:reg_event_manager ("Topic-"++Stream++"-"++E)
+		  end,
+		  State#state.topics_in_vnode),
+    {noreply,  State};
+handle_coverage(_Msg, _KeySpaces, _Sender, State) -> 
+    {stop, notimplemented, State}.
+
 
 handle_exit(_Pid, _Reason, State) ->
     {noreply, State}.
@@ -205,7 +211,20 @@ handle_exit(_Pid, _Reason, State) ->
 terminate(_Reason, _State) ->
     ok.
 
-num_partitions_in_ring() ->
-    
-    {ok, State} = riak_core_ring_manager:get_my_ring(),
-    riak_core_ring:num_partitions(State).
+
+
+
+topics_in_vnode (-1, ListTopics, _StartPartition, _EndPartition)->
+    ListTopics;
+
+topics_in_vnode (I, ListTopics, StartPartition, EndPartition)->
+    B = <<I:16>>,
+    C = mps_utils:hexstring(B),
+    Index = riak_core_util:chash_key({term_to_binary(C), term_to_binary(C) }),
+    <<IndexAsInt:160/integer>> = Index,
+    case ((IndexAsInt >= StartPartition) and (IndexAsInt =< EndPartition)) of 
+	true ->
+	    topics_in_vnode(I-1, [{C}| ListTopics], StartPartition, EndPartition);
+	false ->
+	    topics_in_vnode(I-1,  ListTopics, StartPartition, EndPartition)
+    end.
