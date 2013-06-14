@@ -12,7 +12,7 @@
 
 
 -export ([locate_kafka_subscription/0, add_subscription/2]).
--export([start_link/0, start_link/1]).
+-export([start_link/0, start_link/2, shutdown/1]).
 
 -export ([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -define(TIMER_INTERVAL, 1000).
@@ -48,7 +48,7 @@
 %%                          
 %%           
 
--record(state, { list_topics = [], hardcodedoffset=0, kafkaclientpid 
+-record(state, { list_topics = [], hardcodedoffset=0, kafkaclientpid , publish=0
                 }).
 
 
@@ -69,10 +69,13 @@ add_subscription (Pid, {Topic, Stream, Fun}) ->
 start_link() ->
     gen_server:start_link( ?MODULE, [], []).
 
-start_link(in_mps) ->
-    gen_server:start_link( ?MODULE, [in_mps], []).
+start_link(in_mps, Mode) ->
+    gen_server:start_link( ?MODULE, [in_mps, Mode], []).
 
-    
+shutdown(Pid) ->    
+    Pid ! shutdown.
+
+
  
     
 
@@ -88,13 +91,23 @@ init([]) ->
 
 
 
-init([in_mps]) -> 
+init([in_mps, publish]) -> 
     
     gproc:reg({p, l, self()}, kafka_subscription),
     {ok, Pid } = kafka_client:start_link(),
     
     erlang:send_after(?TIMER_INTERVAL, self(), timer),
-    {ok, #state{kafkaclientpid = Pid}, 0}.
+    {ok, #state{kafkaclientpid = Pid, publish=1}, 0};
+
+
+
+init([in_mps, print]) -> 
+    
+    gproc:reg({p, l, self()}, kafka_subscription),
+    {ok, Pid } = kafka_client:start_link(),
+    
+    erlang:send_after(?TIMER_INTERVAL, self(), timer),
+    {ok, #state{kafkaclientpid = Pid, publish=0}, 0}.
 
 
 handle_call({add_subscription, {_Topic, _Stream, _Fun}}, _From, State) ->  
@@ -125,7 +138,12 @@ handle_info (timer, State) ->
 	false ->
 	    LastOffSet = 
 		lists:foldl(fun ({OffSet,_, _, Key, Value}, _A) ->
-				    mps:publish (binary_to_list(<<"Topic1">>), binary_to_list(Key), binary_to_list(Value)) ,
+				    case State#state.publish == 1 of 
+					true ->
+					    mps:publish (binary_to_list(<<"Topic1">>), binary_to_list(Key), binary_to_list(Value));
+					false ->
+					    io:format("~p,~p,~p~n", ["Topic1", binary_to_list(Key), binary_to_list(Value)])
+				    end,
 				    OffSet
 			    end,
 			    {},
@@ -138,6 +156,9 @@ handle_info (timer, State) ->
 	    erlang:send_after(?TIMER_INTERVAL, self(), timer),
 	    {noreply, State}
     end;
+
+handle_info(shutdown, State) -> 
+  {stop, shutdown, State};
 
 handle_info(_, State) -> 
   {noreply, State}.

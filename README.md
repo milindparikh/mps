@@ -3,9 +3,10 @@ mps
 
 Massive Publish Subscribe based on Kafka
 
+THIS IS CURRENTLY ALPHA SOFTWARE (WITH ALL OF THE ATTENDANT ISSUES). 
 
-mps is built as an publish/subscribe mechanism on top of Kafka in Erlang. This version of mps uses 
-Apache Kafka 0.8. Apache Kafka's wire protocol enables it to communicate with other clients. The 
+mps is built for eventing framework mechanism on top of Apache Kafka in Erlang. This version of mps 
+uses Apache Kafka 0.8. Apache Kafka's wire protocol enables it to communicate with other clients. The 
 wire protocol, for such systems, is usually too low level to enable easy-to-use semantics at the 
 the higher level. 
 
@@ -74,7 +75,7 @@ devolves to
        add_subscription (Subscriber, {"Promotions", "com.amazon.sales.orders", <InstanceId>, <CB>}, stream)
 			
 Replaying is when a client needs to look at the history of that Topic/Key. There is no current merge 
-capabilities when the replay becomes in-sync with the stream. The following verbs are supported in mps
+capabilities when the replay becomes in-sync with the stream. The following verbs will be  supported in mps
 
 	     {replay, from_begining, to_end}       %% the end as it exists at the start of replay
 	     {replay, from_begining, to_infinity}  %% after playing catchup, behaves like stream on own channel
@@ -93,7 +94,7 @@ doability.
 4. SCALE
 
 mps is riak_core enabled. This means that adding additional nodes to handle demand and deleting nodes
-to shed load beccomes easy to do. 
+to shed load should beccome easy to do. 
 
 
 BUILDING 

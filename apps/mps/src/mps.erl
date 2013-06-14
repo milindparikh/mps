@@ -5,12 +5,12 @@
 -export([
          ping/0,
 	 create_stream/0,	 create_stream/1,
-	 
 	 create_topics/0,
 	 create_topics/1,
 	 publish/3,
 	 get_pid_for_topic/1, 
 	 publish_to_kafka/3,
+	 publish_to_kafka_ignore/3,
 	 subscribe_from_kafka/1,
 	 subscribe_from_kafka/2
 	 
@@ -62,7 +62,7 @@ publish(Topic, KExpr, Value, stream) ->
     {ok, R} = re:compile(".*-.*-(.*)"),
     HTopics = mps_utils:get_hex_topics(Topic,atom_to_list(stream), mps_utils:generate_keys_for_publish(KExpr)),
     %% THE FOLLOWING IS A NAIVE IMPLEMENTATION OF NOTIFY... USE SPAWN OR SOMETHING
-    lists:foldl(fun (X, _A) ->
+    lists:foldl(fun ({KTopic, Key, X}, _A) ->
 			case X of 
 			    undefined ->
 				ok;
@@ -72,7 +72,7 @@ publish(Topic, KExpr, Value, stream) ->
 					HTopic = lists:sublist(X, Fs+1, Fe),
 					IndexNode = get_index_node(HTopic),
 					riak_core_vnode_master:sync_spawn_command(
-					  IndexNode, {publish, X, Value}, mps_vnode_master);
+					  IndexNode, {publish, X, {KTopic, Key, Value}}, mps_vnode_master);
 				    _ ->
 					ok
 				end
@@ -93,7 +93,7 @@ add_subscription (Subscriber, {Topic, KExpr, I, CallbackFun}) ->
 add_subscription ({SubscriberId, ListOfSubscriptions}, {Topic, KExpr, I, CallbackFun}, stream) ->
     SubscriptionId = flake_harness:generate(1, 62),
     HTopics = mps_utils:get_hex_topics(Topic,atom_to_list(stream), mps_utils:generate_keys_for_subscribe(KExpr)),
-    SubscribedTopics = [{K, {mps_eventhandler_subscription, hd(flake_harness:generate(1, 62))}} || K <- HTopics],
+    SubscribedTopics = [{K, {mps_eventhandler_subscription, hd(flake_harness:generate(1, 62))}} || {_, _, K} <- HTopics],
 
     lists:foldl(fun ({HTopic, {Module, Id}}, _A) ->
 			IndexNode = get_index_node(HTopic),
@@ -209,6 +209,12 @@ delete_particular_subscription({subscription, _Id, _Mode , _KExpr, _KMExpr, Subs
     
     ok.
 
+
+
+
+publish_to_kafka_ignore (Topic, Key, Value) ->
+    Pid = kafka_client:locate_kafka_client(),
+    kafka_client:request_produce_ignore(Pid, [{Topic, [   {0, [{Key,Value}]    }]}]).
 
 
 publish_to_kafka (Topic, Key, Value) ->

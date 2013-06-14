@@ -125,7 +125,7 @@ find_vnode_for_hex_topic (HTopic) ->
 
 
 get_hex_topics (Topic, Mode, Keys) ->
-    [hextopic(Topic++"-"++Mode++"-"++integer_to_list(N), Mode, K) || N <-lists:seq(0,?REDUDANCY_FOR_SUBSCRIPTION), K <- Keys].
+    [{Topic, K, hextopic(Topic++"-"++Mode++"-"++integer_to_list(N), Mode, K)} || N <-lists:seq(0,?REDUDANCY_FOR_SUBSCRIPTION), K <- Keys].
 
 
     
