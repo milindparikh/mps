@@ -684,7 +684,10 @@ parse_topics_for_fetch_request(RemainingCount, <<TopicLength:16/integer, TopicNa
 %    io:format("Partition Length = ~p~n", [PartitionLength]),
     
     {ListPartitions, RestOfRemainingBin} = parse_partitions_for_fetch_request (PartitionLength, RemainingBin),
-    parse_topics_for_fetch_request(RemainingCount-1, RestOfRemainingBin, [{TopicName, [ListPartitions]} | Topics]).
+    parse_topics_for_fetch_request(RemainingCount-1, RestOfRemainingBin, [{TopicName, [ListPartitions]} | Topics]);
+
+parse_topics_for_fetch_request(_, _Bin, Topics) ->
+    Topics.
 
 
 parse_partitions_for_fetch_request(PartitionLength, RemainingBin) ->
@@ -729,7 +732,14 @@ parse_partitions_for_fetch_request(RemainingPartitions,
 				     RestOfBin/binary>>, 
 				   ListPartitions) ->
     
-    parse_partitions_for_fetch_request(RemainingPartitions-1, RestOfBin, [{PartitionId, ErrorCode, HighWaterMarkOffset, <<"">>} | ListPartitions]).
+    parse_partitions_for_fetch_request(RemainingPartitions-1, RestOfBin, [{PartitionId, ErrorCode, HighWaterMarkOffset, <<"">>} | ListPartitions]);
+
+
+
+
+parse_partitions_for_fetch_request(_, _Bin, ListPartitions) ->
+    {ListPartitions, <<"">>}.
+
 
 parse_message_set_for_fetch_request (MessageSet) ->
 %    io:format("MessageSet = ~p~n", [MessageSet]),
@@ -740,7 +750,10 @@ parse_message_set_for_fetch_request (<<"">>, ListMessages)->
 
 parse_message_set_for_fetch_request (<<Offset:64/integer, MessageSize:32/integer, RestOfMessage:MessageSize/binary, RestOfMessageSet/binary>>, ListMessages)->
 %    io:format("ListMessages, RestOfMessage = ~p ~p~n", [ListMessages, RestOfMessage]),
-    parse_message_set_for_fetch_request (RestOfMessageSet,  [parse_message_for_fetch_request(Offset, RestOfMessage) | ListMessages ]).
+    parse_message_set_for_fetch_request (RestOfMessageSet,  [parse_message_for_fetch_request(Offset, RestOfMessage) | ListMessages ]);
+
+parse_message_set_for_fetch_request (_, ListMessages)->
+    ListMessages.
 
 parse_message_for_fetch_request(Offset, <<Crc:32/integer, RestOfMessage/binary>>)->
     case erlang:crc32(RestOfMessage) == Crc of
@@ -766,7 +779,11 @@ parse_crcd_message_for_fetch_request(Offset, <<MagicBytes:8/integer, Attributes:
 
 
 parse_crcd_message_for_fetch_request(Offset, <<MagicBytes:8/integer, Attributes:8/integer, KeySize:32/signed-integer, Key:KeySize/binary, ValueSize:32/signed-integer, Value:ValueSize/binary>> ) ->
-    {Offset, MagicBytes, Attributes, Key, Value}.
+    {Offset, MagicBytes, Attributes, Key, Value};
+
+
+parse_crcd_message_for_fetch_request(_Offset, _ ) ->
+    {}.
 
 
 							 

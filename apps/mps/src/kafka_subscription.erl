@@ -137,16 +137,22 @@ handle_info (timer, State) ->
     case KList == <<"">> of 
 	false ->
 	    LastOffSet = 
-		lists:foldl(fun ({OffSet,_, _, Key, Value}, _A) ->
-				    case State#state.publish == 1 of 
+		lists:foldl(fun (X, A) ->
+				    case X == {} of 
 					true ->
-					    mps:publish (binary_to_list(<<"Topic1">>), binary_to_list(Key), binary_to_list(Value));
+					    A;
 					false ->
-					    io:format("~p,~p,~p~n", ["Topic1", binary_to_list(Key), binary_to_list(Value)])
-				    end,
-				    OffSet
+					    {OffSet,_, _, Key, Value} = X,
+					    case State#state.publish == 1 of 
+						true ->
+						    mps:publish (binary_to_list(<<"Topic1">>), binary_to_list(Key), binary_to_list(Value));
+						false ->
+						    io:format("~p,~p,~p~n", ["Topic1", binary_to_list(Key), binary_to_list(Value)])
+					    end,
+					    OffSet
+				    end
 			    end,
-			    {},
+			    State#state.hardcodedoffset,
 			    lists:reverse(KList)),
 	    
 	    io:format("~p~n", [LastOffSet]),
