@@ -97,48 +97,11 @@ mps is riak_core enabled. This means that adding additional nodes to handle dema
 to shed load should beccome easy to do. 
 
 
-BUILDING 
+Building:
 
-Currently riak_core depends on webmachine which depends on mochiweb. We are using R16B version of Erlang. 
-THe version of mochiweb that deals with webmachine is not compatible with R16B. One must update to a later
-version of mochiweb. 
-
-You must have a sane make and rebar. 
-
-Steps : 
-    1. git clone https://github.com/milindparikh/mps
-    2. make rel 
-          will give you some warnings and errors 
-          To remove the errors, go to rebar.config of webmachine (under deps/webmachine)
-             2.a change mochiweb tag from "1.5.1p3" to ""1.5.1p5"
-             2.b remove the mochiweb directory under deps
-	     2.c rerun make rel
-                        It will now get the correct version of the mochiweb
-             2.d ./rel/mps/bin/mps console will start the entire node
-                  BUT YOU ARE NOT DONE YET... SEE BELOW
-
-Also for the sample example of the demo, we use cowboy as the webserver ; primarily for the websocket level. 
-cowboy does not play nicely with the riak_core template for content serving (or at least it demonstrates 
-our ignorance in working with cowboy). THere are some steps that must be taken after the rel is built on a 
-manual basis.
-
-		STEP 2.e IS NOW DONE AS A PART OF THE make rel PROCESS
-
-            2.e Copy the priv directory under apps/mps/src to two places 
-                       rel/mps 
-		       rel/mps/lib/mps-1        -> you will need to mkdir mps-1 under lib first
-
-
-            2.f Under console, you are now in erlang world 
-	    	  do a mps_pubsub:create_topics().
-		  
-
-            2.g 
-                localhost:8080              gets you the Topic Subscription Client
-		localhost:8080/publish      gets you the Topic Publishing Client 
-           
-
-
-
-
- 
+1) ./startup.sh 
+2) rel/mps/bin/mps console (It will start node and show erlang console)
+3) mps:create_topics().
+4) We are ready to go - 
+	localhost:8080              gets you the Topic Subscription Client
+        localhost:8080/publish      gets you the Topic Publishing Client 
