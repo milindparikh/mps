@@ -225,11 +225,11 @@ fetch_request(CorrelationId, ClientId, TopicList) ->
 fetch_request(CorrelationId, ClientId, MaxWaitTime, MinBytes, TopicList) ->
 	%% @TODO: Make partitions optional
 	FetchTopicList = lists:foldl(fun(X, List) -> 
-              {TopicName, PartitionList} = X,
+              {TopicName, PartitionData} = X,
               Partitions = lists:foldl(fun (Y, PartitionList) ->
 								  {Partition, Offset} = Y,
 								  [<<Partition:32/integer, Offset:64/integer, ?MAX_BYTES_FETCH:32/integer>> | PartitionList]
-								  end, [], PartitionList),
+								  end, [], PartitionData),
 			  PartitionBin = create_array_binary(Partitions),
 			  TopicNameBin = create_string_binary(TopicName),
 			  [<<TopicNameBin/binary, PartitionBin/binary>> | List]
@@ -577,169 +577,7 @@ create_key_value_bin(Key, Value) ->
 	KeySize = size(KeyBin),
 	<<KeySize:32/integer, KeyBin/binary, ValueSize:32/integer, ValueBin/binary>>.
 
-
-
-
-
-
-
-
-
-%%%-------------------------------------------------------------------
-%%%                         INTERNAL FETCH REQUEST FUNCTIONS
-%%%-------------------------------------------------------------------
-
-
-
-var_part_of_fetch_request (Topics) ->
-
-    TopicCount = length(Topics),
-    
-    TopicRequests = 
-	lists:foldl(fun (X, A1) ->
-			    {TopicName, PartitionInfo} = X, 
-%			    io:format("PARTITION INFO ~p~n", [PartitionInfo]),
-%			    io:format("Topic Name = ~p~n", [TopicName]),
-			    TopicNameSize = size(TopicName),
-			    PartitionSize = length(PartitionInfo),
-%			    io:format("Partition Size = ~p~n", [PartitionSize]),
-			    VarP = 
-				lists:foldl(fun(Y, A2) ->
-						    {PartitionId, FetchOffset,MaxBytes } = Y,
-						    <<PartitionId:32/integer, FetchOffset:64/integer, MaxBytes:32/integer, A2/binary>>
-					    end,
-					    <<"">>,
-					    PartitionInfo),
-%			    io:format("VAR INFO = ~p~n", [VarP]),
-%			    SendMsg = <<TopicNameSize:16/integer,
-%			      TopicName/binary,
-%			      PartitionSize:32/integer, VarP/binary, A1/binary>>,
-			    
-%			    io:format("SEND MSG = ~p~n", [SendMsg]),
-			    <<TopicNameSize:16/integer,
-			      TopicName/binary,
-			      PartitionSize:32/integer, VarP/binary, A1/binary>>
-		    end,
-		    <<"">>,
-		    Topics),
-    <<TopicCount:32/integer, TopicRequests/binary>>.
-
-
-parse_topics_for_fetch_request (<<NumberOfTopics:32/integer, Bin/binary>>) ->
-%    io:format("Number of Topics   = ~p  and Bin = ~p~n", [NumberOfTopics, Bin]),
-    parse_topics_for_fetch_request(NumberOfTopics, Bin, []).
-
-parse_topics_for_fetch_request(0, _Bin, Topics) ->
-    Topics;
-
-parse_topics_for_fetch_request(RemainingCount, <<TopicLength:16/integer, TopicName:TopicLength/binary, PartitionLength:32/integer, RemainingBin/binary>>, Topics ) ->
-%    io:format("Topic Name = ~p~n", [TopicName]),
-%    io:format("Partition Length = ~p~n", [PartitionLength]),
-    
-    {ListPartitions, RestOfRemainingBin} = parse_partitions_for_fetch_request (PartitionLength, RemainingBin),
-    parse_topics_for_fetch_request(RemainingCount-1, RestOfRemainingBin, [{TopicName, [ListPartitions]} | Topics]);
-
-parse_topics_for_fetch_request(_, _Bin, Topics) ->
-    Topics.
-
-
-parse_partitions_for_fetch_request(PartitionLength, RemainingBin) ->
-    parse_partitions_for_fetch_request(PartitionLength, RemainingBin, []).
-
-
-parse_partitions_for_fetch_request(0, Bin, ListPartitions) ->
-    {ListPartitions, Bin};
-
-
-parse_partitions_for_fetch_request(RemainingPartitions, 
-				   <<PartitionId:32/integer,
-				     ErrorCode:16/integer, 
-				     HighWaterMarkOffset:64/integer, 
-				     0:32/integer, 
-				     RestOfBin/binary>>, 
-				   ListPartitions) ->
-
-    parse_partitions_for_fetch_request(RemainingPartitions-1, RestOfBin, [{PartitionId, ErrorCode, HighWaterMarkOffset, <<"">>} | ListPartitions]);
-
-
-
-
-parse_partitions_for_fetch_request(RemainingPartitions, 
-				   <<PartitionId:32/integer,
-				     0:16/integer, 
-				     HighWaterMarkOffset:64/integer, 
-				     MessageSetSize:32/integer, 
-				     MessageSet:MessageSetSize/binary,
-				     RestOfBin/binary>>, 
-				   ListPartitions) ->
-    
-    parse_partitions_for_fetch_request(RemainingPartitions-1, RestOfBin, [{PartitionId, 0, HighWaterMarkOffset, parse_message_set_for_fetch_request (MessageSet)} | ListPartitions]);
-
-
-parse_partitions_for_fetch_request(RemainingPartitions, 
-				   <<PartitionId:32/integer,
-				     ErrorCode:16/integer, 
-				     HighWaterMarkOffset:64/integer, 
-				     MessageSetSize:32/integer, 
-				     _MessageSet:MessageSetSize/binary,
-				     RestOfBin/binary>>, 
-				   ListPartitions) ->
-    
-    parse_partitions_for_fetch_request(RemainingPartitions-1, RestOfBin, [{PartitionId, ErrorCode, HighWaterMarkOffset, <<"">>} | ListPartitions]);
-
-
-
-
-parse_partitions_for_fetch_request(_, _Bin, ListPartitions) ->
-    {ListPartitions, <<"">>}.
-
-
-parse_message_set_for_fetch_request (MessageSet) ->
-%    io:format("MessageSet = ~p~n", [MessageSet]),
-    parse_message_set_for_fetch_request (MessageSet, []).
-
-parse_message_set_for_fetch_request (<<"">>, ListMessages)->
-    ListMessages;
-
-parse_message_set_for_fetch_request (<<Offset:64/integer, MessageSize:32/integer, RestOfMessage:MessageSize/binary, RestOfMessageSet/binary>>, ListMessages)->
-%    io:format("ListMessages, RestOfMessage = ~p ~p~n", [ListMessages, RestOfMessage]),
-    parse_message_set_for_fetch_request (RestOfMessageSet,  [parse_message_for_fetch_request(Offset, RestOfMessage) | ListMessages ]);
-
-parse_message_set_for_fetch_request (_, ListMessages)->
-    ListMessages.
-
-parse_message_for_fetch_request(Offset, <<Crc:32/integer, RestOfMessage/binary>>)->
-    case erlang:crc32(RestOfMessage) == Crc of
-	false ->
-	    {corrupted_msg};
-	true  ->
-%	    io:format("RestOfMessage = ~p~n", [RestOfMessage]),
-	    parse_crcd_message_for_fetch_request(Offset, RestOfMessage)
-    end.
-
-
-
-
-parse_crcd_message_for_fetch_request(Offset, <<MagicBytes:8/integer, Attributes:8/integer, -1:32/signed-integer,  -1:32/signed-integer>> ) ->
-    {Offset, MagicBytes, Attributes, <<"">>, <<"">>};
-
-parse_crcd_message_for_fetch_request(Offset, <<MagicBytes:8/integer, Attributes:8/integer, -1:32/signed-integer, ValueSize:32/signed-integer, Value:ValueSize/binary>> ) ->
-    {Offset, MagicBytes, Attributes, <<"">>, Value};
-
-
-parse_crcd_message_for_fetch_request(Offset, <<MagicBytes:8/integer, Attributes:8/integer, KeySize:32/signed-integer, Key:KeySize/binary, -1:32/signed-integer>> ) ->
-    {Offset, MagicBytes, Attributes, Key, <<"">>};
-
-
-parse_crcd_message_for_fetch_request(Offset, <<MagicBytes:8/integer, Attributes:8/integer, KeySize:32/signed-integer, Key:KeySize/binary, ValueSize:32/signed-integer, Value:ValueSize/binary>> ) ->
-    {Offset, MagicBytes, Attributes, Key, Value};
-
-
-parse_crcd_message_for_fetch_request(_Offset, _ ) ->
-    {}.
-
-
-							 
+ 
     
 
 
@@ -823,7 +661,7 @@ parse_offsets_for_offset_requests(RemainingOffsets, <<Offset:64/integer, RestOfB
 
 -spec parse_fetch_topic_details(NumberOfTopics::integer(), TopicBin::binary(), Data::list()) -> tuple.
 
-parse_fetch_topic_details(0, TopicBin, Data) -> 
+parse_fetch_topic_details(0, _ , Data) -> 
 	Data;
 parse_fetch_topic_details(NumberOfTopics, TopicBin, Data) -> 
 	%% Parse Topic Details
@@ -838,6 +676,7 @@ parse_fetch_partition_details(0, PartitionBin, Data) ->
 parse_fetch_partition_details(NumberOfPartitions, PartitionBin, Data) ->
 	<<Partition:32/integer, ErrorCode:16/integer, HighwaterMarkOffset:64/integer, MessageSetSize:32/integer, Bin/binary>> = PartitionBin,
 	<<MessageBin:MessageSetSize/binary, RemainningBin/binary>> = Bin,
+    _ = {HighwaterMarkOffset, ErrorCode},
     MessageList = parse_fetch_message_details(MessageBin, []),
     parse_fetch_partition_details((NumberOfPartitions- 1), RemainningBin, [{Partition, MessageList} | Data]). 
 
@@ -846,6 +685,7 @@ parse_fetch_partition_details(NumberOfPartitions, PartitionBin, Data) ->
 parse_fetch_message_details(<<>>, Data) -> Data;
 parse_fetch_message_details(MessageBin, Data) -> 
 	<<OffSet:64/integer, MessageSize:32/integer,CRC32:32/integer, MagicByte:8/integer, Attributes:8/integer, KeySize:32/signed-integer, KeyBin/binary>> = MessageBin,
+        _ = {MessageSize, CRC32, MagicByte, Attributes},
 	{Key, ValueBin} = parse_bytes(KeySize, KeyBin),
 	<<ValueSize:32/signed-integer, Values/binary>> = ValueBin,
 	{Value, RemainningBin} = parse_bytes(ValueSize, Values),
@@ -856,14 +696,6 @@ parse_bytes(-1, Bin) ->
 parse_bytes(BytesSize, Bin) ->
 	<<Bytes:BytesSize/binary, RemainningBin/binary>> = Bin,
 	{Bytes, RemainningBin}.
-
-parse_integer_array(-1, SizeOfInteger, DataList, Bin) ->
-	{DataList, Bin};
-parse_integer_array(0, SizeOfInteger, DataList, Bin) ->
-	{DataList, Bin};
-parse_integer_array(ListSize, SizeOfInteger, DataList, Bin) ->
-	<<Value:SizeOfInteger/integer, RemainningBin/binary>> = Bin,
-	parse_integer_array((ListSize - 1), SizeOfInteger, [Value | DataList], RemainningBin).
 
 %% @doc Create binary value as per kafka protocol from string.
 -spec create_string_binary(StringValue::list()) -> binary.
