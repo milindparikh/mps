@@ -206,100 +206,53 @@ produce_response(Data) ->
 
 
 
+%%%-------------------------------------------------------------------
+%%%             Fetch Request             
+%%%-------------------------------------------------------------------
+%% @doc Generate fetch request - TopicList has list of topics
+%%      where each element is tuple containing topic name and 
+%%      list of partition along with first off set to be read, sample 
+%%      TopicList = [{"topic1", [{0, 0}, {1,0}, {2,0}]}, 
+%%				 {"topic2", [{0, 0}, {1,0}, {2,0}]}].
 
+-spec fetch_request(CorrelationId::integer(), ClientId::list(), TopicList::list()) -> binary. 
 
+fetch_request(CorrelationId, ClientId, TopicList) ->
+	fetch_request(CorrelationId, ClientId, ?FETCH_RQ_MAX_WAIT_TIME, ?FETCH_RQ_MIN_BYTES, TopicList).
+
+-spec fetch_request(CorrelationId::integer(), ClientId::list(), MaxWaitTime::integer(), MinBytes::integer(), TopicList::list()) -> binary.
+
+fetch_request(CorrelationId, ClientId, MaxWaitTime, MinBytes, TopicList) ->
+	%% @TODO: Make partitions optional
+	FetchTopicList = lists:foldl(fun(X, List) -> 
+              {TopicName, PartitionList} = X,
+              Partitions = lists:foldl(fun (Y, PartitionList) ->
+								  {Partition, Offset} = Y,
+								  [<<Partition:32/integer, Offset:64/integer, ?MAX_BYTES_FETCH:32/integer>> | PartitionList]
+								  end, [], PartitionList),
+			  PartitionBin = create_array_binary(Partitions),
+			  TopicNameBin = create_string_binary(TopicName),
+			  [<<TopicNameBin/binary, PartitionBin/binary>> | List]
+ 			 end, [], TopicList),
+	FetchTopicBin = create_array_binary(FetchTopicList),
+	CommonPartofRequest = common_part_of_request(?RQ_FETCH, ?API_V_FETCH, CorrelationId, ClientId),
+	FetchRequest = <<CommonPartofRequest/binary, ?REPLICA_ID:32/signed-integer, MaxWaitTime:32/integer, MinBytes:32/integer, FetchTopicBin/binary>>,
+        FetchRequestSize = size(FetchRequest),
+	<<FetchRequestSize:32/integer, FetchRequest/binary>>.
 
 
 %%%-------------------------------------------------------------------
-%%%                         API/FETCH FUNCTION
+%%%             Fetch Response             
 %%%-------------------------------------------------------------------
 
-%%  @doc The         FETCH request
-%%           fetch_request(0000000001, "ERLKAFKA", [
-%%                                                    {"testtopic1", 
-%%                                                           [    % PartitionId, StartOffset, MaxBytes
-%%							      {0, 0, 20000},
-%%							      {1, 0, 20000}
-%%                                                           ]
-%%						      },       
-%%                                                    {"testtopic2", 
-%%                                                           [
-%%							      {0, 0, 20000},
-%%							      {1, 0, 20000}
-%%                                                           ]
-%%						      }
-%%						     ]
-%%			     )
+-spec fetch_response(Response::binary()) -> tuple().
 
-                                                      
-
-% -spec        fetch_request(
-%		       CorrelationId::integer(),
-%                       ClientId::list(),
-%                       Topics::list()) ->
-%			      binary().
-%
-
-
-fetch_request ( CorrelationId,
-		  ClientId,
-		  Topics
-		) ->
-
-    fetch_request ( CorrelationId,
-		      ClientId,
-		      Topics, 
-		      ?FETCH_RQ_MAX_WAIT_TIME,
-		      ?FETCH_RQ_MIN_BYTES).
-	
-%-spec fetch_request(
-%	CorrelationId::integer(),
-%	ClientId::list(),
-%	Topics::list(), 
-%	MaxWaitTime:integer(),
-%	MinBytes:integer()
-%       ) ->
-%			     binary().
-%
-
-fetch_request ( CorrelationId,
-		  ClientId,
-		  Topics, 
-		  MaxWaitTime,
-		  MinBytes
-		) ->
-
-
-    CommonPartOfRequest = common_part_of_request(?RQ_FETCH, 
-						  ?API_V_FETCH,
-						  CorrelationId,
-						  ClientId),
-
-    VarFetchRequest = var_part_of_fetch_request(Topics),
-
-	
-    FetchRequest = 
-	<<CommonPartOfRequest/binary, 
-%	  ?REPLICA_ID:32/integer,
-	  -1:32/big-signed-integer,
-	  MaxWaitTime:32/integer, 
-	  MinBytes:32/integer,
-	  VarFetchRequest/binary>>,
-
-    FetchRequestSize = size(FetchRequest),
-    
-    <<FetchRequestSize:32/integer, FetchRequest/binary>>.
+fetch_response(<<NumberOfTopics:32/integer, Rest/binary >>) -> 
+	  parse_fetch_topic_details(NumberOfTopics, Rest, []).
 
 
 
-%-spec fetch_response(
-%		       Data::binary()) ->
-%			      {TopicList}
 
-
-fetch_response(Data) ->
-    Topics = parse_topics_for_fetch_request(Data),
-    {Topics}.
 
 
 
@@ -865,3 +818,67 @@ parse_offsets_for_offset_requests(0, RestOfBin, ListOffsets) ->
     {ListOffsets, RestOfBin};
 parse_offsets_for_offset_requests(RemainingOffsets, <<Offset:64/integer, RestOfBin/binary>>, ListOffsets) ->
     parse_offsets_for_offset_requests(RemainingOffsets -1, RestOfBin, [Offset | ListOffsets]).
+
+%% Parsed payload response
+
+-spec parse_fetch_topic_details(NumberOfTopics::integer(), TopicBin::binary(), Data::list()) -> tuple.
+
+parse_fetch_topic_details(0, TopicBin, Data) -> 
+	Data;
+parse_fetch_topic_details(NumberOfTopics, TopicBin, Data) -> 
+	%% Parse Topic Details
+    <<TopicNameSize:16/integer, TopicName:TopicNameSize/binary, NumberOfPartitions:32/integer, PartitionBin/binary>> = TopicBin,
+	{RemainningBin, PartitionList} = parse_fetch_partition_details(NumberOfPartitions, PartitionBin, []),
+	parse_fetch_topic_details((NumberOfTopics - 1), RemainningBin, [{TopicName, PartitionList} | Data ]).
+
+-spec parse_fetch_partition_details(NumberOfPartitions::integer(), PartitionBin::binary(), Data::list()) -> tuple.
+
+parse_fetch_partition_details(0, PartitionBin, Data) ->
+	{PartitionBin, Data};
+parse_fetch_partition_details(NumberOfPartitions, PartitionBin, Data) ->
+	<<Partition:32/integer, ErrorCode:16/integer, HighwaterMarkOffset:64/integer, MessageSetSize:32/integer, Bin/binary>> = PartitionBin,
+	<<MessageBin:MessageSetSize/binary, RemainningBin/binary>> = Bin,
+    MessageList = parse_fetch_message_details(MessageBin, []),
+    parse_fetch_partition_details((NumberOfPartitions- 1), RemainningBin, [{Partition, MessageList} | Data]). 
+
+-spec parse_fetch_message_details(MessageBin::binary(), Data::list()) -> list.
+
+parse_fetch_message_details(<<>>, Data) -> Data;
+parse_fetch_message_details(MessageBin, Data) -> 
+	<<OffSet:64/integer, MessageSize:32/integer,CRC32:32/integer, MagicByte:8/integer, Attributes:8/integer, KeySize:32/signed-integer, KeyBin/binary>> = MessageBin,
+	{Key, ValueBin} = parse_bytes(KeySize, KeyBin),
+	<<ValueSize:32/signed-integer, Values/binary>> = ValueBin,
+	{Value, RemainningBin} = parse_bytes(ValueSize, Values),
+	parse_fetch_message_details(RemainningBin, [{OffSet, Key, Value} | Data]).
+
+parse_bytes(-1, Bin) ->
+	{<<>>, Bin};
+parse_bytes(BytesSize, Bin) ->
+	<<Bytes:BytesSize/binary, RemainningBin/binary>> = Bin,
+	{Bytes, RemainningBin}.
+
+parse_integer_array(-1, SizeOfInteger, DataList, Bin) ->
+	{DataList, Bin};
+parse_integer_array(0, SizeOfInteger, DataList, Bin) ->
+	{DataList, Bin};
+parse_integer_array(ListSize, SizeOfInteger, DataList, Bin) ->
+	<<Value:SizeOfInteger/integer, RemainningBin/binary>> = Bin,
+	parse_integer_array((ListSize - 1), SizeOfInteger, [Value | DataList], RemainningBin).
+
+%% @doc Create binary value as per kafka protocol from string.
+-spec create_string_binary(StringValue::list()) -> binary.
+create_string_binary([]) ->
+	<<-1:16/signed-integer>>;
+create_string_binary(StringValue) ->
+	StringBin = list_to_binary(StringValue),
+	StringSize = size(StringBin),
+	<<StringSize:16/integer, StringBin/binary>>.
+
+%% @doc Create binary value as per kafka protocol from list.
+-spec create_array_binary(ListValues::list()) -> binary.
+create_array_binary([]) ->
+	<<-1:32/signed-integer>>;
+create_array_binary(ListValues) ->
+	NumberOfValues = length(ListValues),
+	ValueBin = list_to_binary(ListValues),
+	<<NumberOfValues:32/integer, ValueBin/binary>>.
